@@ -204,11 +204,14 @@ void BlinkR()
 //                                                   sizeof(ei_classifier_inferencing_categories[0])));
 // }
 
-bool pauseM4         = false;   // Allow M7 to pause the M4 loop() so we can make the serial output less busy.
-int  m4IntGlobalVar1 = 4444;    // This is a global variable in M4 that the M7 can change via setOneM4Var().
+bool detectedKeypharse = false; // Used to control when we print to serial output.
+bool pauseM4           = false; // Allow M7 to pause the M4 loop() so we can make the serial output less busy.
+int  m4IntGlobalVar1   = 4444;  // This is a global variable in M4 that the M7 can change via setOneM4Var().
 
 /**
  * @brief      When M7 does RPC with M4 it is bounded to land here.
+ *             Allows M7 to set a M4 global variable.
+ *             Toggles pausing the M4 loop().
  */
 int setOneM4Var(int var1_FromM7)
 {
@@ -226,16 +229,39 @@ int setOneM4Var(int var1_FromM7)
 }
 
 /**
+ * @brief      Allow M7 to show M4 version
+ *             M4 setup() has     "RPC.bind("getM4Version", printM4Version);"
+ *             M7 has a statement "RPC.call("getM4Version", 0xACE);"
+ */
+void printM4Version(int varFromM4)
+{
+  static const String toM7 = String(__FILE__)  + 
+                             String(" ")       +
+                             String(__DATE__)  +
+                             String(" ")       +
+                             String(__TIME__)  +
+                             String("  IDE  ") +
+                             String(ARDUINO);
+  RPC.println(toM7);
+  //RPC.println(__FILE__ " " __DATE__ " " __TIME__);
+  //RPC.println("  IDE "); RPC.println(ARDUINO);
+}
+/**
  * @brief      Arduino setup function
  */
 void setup()
 {
     RPC.begin();                                                   // Allow remote procedure calls with M7.
 
+    // Allows M7 to set a M4 global variable and
+    // toggles pausing the M4 loop().
     RPC.bind("setOneVarInM4", setOneM4Var);                        // These arguments do not have to be the same.
                                                                    // M7 calls "setOneVarInM4()".
                                                                    // M4 has a routine called "setOneM4Var()".
                                                                    // Thus, bind() is a bounden between the name and function.    
+    // Show M4 version.
+    RPC.bind("getM4Version", printM4Version);
+
     // Init Static Vars.
     run_classifier_init();                    
 
@@ -327,7 +353,7 @@ void loop()
         // Print Objects that Got Classified
         //
         // (Mainly we want to examine label: "take_it_to_the_edge")
-        bool detectedKeypharse = false;                            // Used to control when we print to serial output.
+        detectedKeypharse = false;                            // Used to control when we print to serial output.
         for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
         {
             //
@@ -353,8 +379,12 @@ void loop()
             if ("take_it_to_the_edge" == result.classification[ix].label)
             {
               // Is there high confidence this keyphrase is what we are looking for.
+              ///toM7 = String("\t\t\tComparing ") + String(result.classification[ix].value) + alignmentTab + String(keywordConfidenceLevel);
+              ///RPC.println(toM7);
               if(result.classification[ix].value > keywordConfidenceLevel)
               {
+                ///toM7 = String("\t\t\tdetectedKeypharse=true");
+                ///RPC.println(toM7);
                 detectedKeypharse = true;                          // We will print after this for-loop so output remains consistent.
                                                                    // (Provides a future parser of the serial output less work.)
               }
@@ -365,8 +395,9 @@ void loop()
         // Send M7 a value as well as some text to be printed to the serial output.
         if (detectedKeypharse)
         {
-        //int keywordSuccessValue = 1;                             // Send a fixed  value.
-          int keywordSuccessValue = rand() % 100;                  // Send a random value.   
+          detectedKeypharse = false;
+          int keywordSuccessValue = 42;                            // Send a fixed  value.
+        //int keywordSuccessValue = rand() % 100;                  // Send a random value.   
 
           // Send value to M7 indicating the successful results.
           auto res = RPC.call("setOneVar", keywordSuccessValue).as<int>();     
