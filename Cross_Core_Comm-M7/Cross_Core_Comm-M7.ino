@@ -206,7 +206,7 @@ void loop()
     // On M7, print everything that is received over the RPC stream interface.
     // Buffer it, otherwise all characters will be interleaved by other prints.
     String buffer = "";
-    while (RPC.available() || !micInferenceComplete)
+    while (RPC.available() && micInferenceComplete)
     {
       // M4 has sent an RPC println().
       buffer += (char)RPC.read(); // Fill the buffer with characters.
