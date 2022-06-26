@@ -1,75 +1,119 @@
-/* Edge Impulse Arduino examples
- * Copyright (c) 2021 EdgeImpulse Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+/************************************************************************************
+ * Edge Impulse Arduino examples                                                    *
+ * Copyright (c) 2021 EdgeImpulse Inc.                                              *
+ *                                                                                  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy     *
+ * of this software and associated documentation files (the "Software"), to deal    *
+ * in the Software without restriction, including without limitation the rights     *
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell        *
+ * copies of the Software, and to permit persons to whom the Software is            *
+ * furnished to do so, subject to the following conditions:                         *
+ *                                                                                  *
+ * The above copyright notice and this permission notice shall be included in       *
+ * all copies or substantial portions of the Software.                              *
+ *                                                                                  *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR       *
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,         *
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE      *
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER           *
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,    *
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE    *
+ * SOFTWARE.                                                                        *
+ ************************************************************************************
+ * The MIT License (MIT)                                                            *
+ *                                                                                  *
+ * Modifications to the Software "portenta_h7_microphone_continuous.ino"            *
+ * and saved herin as the Software "EI_portenta_h7_camera.ino"                      *
+ * Copyright (c) 2022 M. Marcial                                                    *
+ *                                                                                  *
+ * The above copyright notice shall be included in                                  *    
+ * all copies or substantial portions of the Software.                              *
+ *                                                                                  *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR       *
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,         *
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE      *
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER           *
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,    *
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE    *
+ * SOFTWARE.                                                                        *
+ ************************************************************************************
  */
 
 /* Includes ---------------------------------------------------------------- */
-//#include <MMarcial-project-1_inferencing.h>
-//#include <Clone_of_FOMO_Washers_and_Screws_160x160_inferencing.h>
-//#include "C:\Users\mmarc\OneDrive\Documents\Arduino\libraries\FOMO_Washers_and_Screws_96x96_inferencing\src\FOMO_Washers_and_Screws_96x96_inferencing.h"
-#include "RPC.h"  // Comes with the mbed board installation. Used for M4-M7 communications.
-#include <FOMO_Washers_and_Screws_96x96_inferencing.h>
-#include "camera.h"
-#include "himax.h"
-#include "edge-impulse-sdk/dsp/image/image.hpp"
-#include <string.h>
+#include "RPC.h"                                            // Comes with the mbed board installation. Used for M4-M7 communications.
+#include <FOMO_Washers_and_Screws_96x96_inferencing.h>      // Edge Impulse generated code to handle the Machine Learning in my Arduino code.
+#include "camera.h"                                         // Arduino library to handle color, resolution, framebuffer, framerate, etc.
+                                                            // Also for frame capturing, motion detection and pattern recognition. 
+#include "himax.h"                                          // Similar to "camera.h" but specific for HM01B0.
+                                                            //    The HM01B0 is an ultralow power CMOS Image Sensor that enables the integration of an
+                                                            //    “Always On” camera for computer vision applications such as gestures, intelligent ambient light
+                                                            //    and proximity sensing, tracking and object identification.
+                                                            // The Vision Shield Camera:
+                                                            //    Specs: https://store-usa.arduino.cc/products/arduino-portenta-vision-shield-ethernet
+                                                            //    Info: The onboard camera is a Himax HM-01B0 camera module
+                                                            //    Camera Mfg: https://www.himax.com.tw/products/cmos-image-sensor/always-on-vision-sensors/hm01b0/ 
+#include "edge-impulse-sdk/dsp/image/image.hpp"             // Edge Impulse library to handle image conversions, cropping
+#include <string.h>                                         // Arduino library: https://www.arduino.cc/reference/en/language/variables/data-types/stringobject/ 
 
 /* Constant defines -------------------------------------------------------- */
+//CAMERA RESOLUTION: 320 x 320 active pixel resolution with support for QVGA.
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
 
 // Frame Buffer allocation options:
 //    - static (default if neither below is chosen)
+// No #define defined.
 //    - heap or
-//    - SDRAM
 //#define EI_CAMERA_FRAME_BUFFER_HEAP
+//    - SDRAM
 #define EI_CAMERA_FRAME_BUFFER_SDRAM
 
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
-#include "SDRAM.h"
-#endif
-//  ----------------------------------------------------------------------------------------------------------------------------------
+/* INFO: Portenta SDRAM ---------------------------------------------------- */
 /*
- ** NOTE: If you run into TFLite arena allocation issue.
+    Portenta has an external 8MB RAM module (albeit slower), you could have a huge heap by just using Portenta_SDRAM
+    library and replacing the calls to malloc and free with ea_malloc and ea_free.
+    Can also do this:
+    #include <SDRAM.h> //Use the SDRAM library for the Portenta.
+    SDRAMClass ram;
+    uint8_t *b;
+    void setup()
+    {
+      ram.begin();
+      //Example for a uint8 array.
+      b = (uint8_t *)ram.malloc(320 * 240 * sizeof(uint8_t));
+    }
+    SDRAM Example: https://github.com/arduino/ArduinoCore-mbed/issues/38
+*/
+#include "SDRAM.h"                      // Storage for frame buffer in 8Mb SDRAM.
+#endif
+
+/* INFO: TFLite arena allocation issue ------------------------------------- */
+/*
+    NOTE: If you run into TFLite arena allocation issue.
           Failed to allocate TFLite arena (764,166 bytes) <-- My version of "boards.local.txt" did not resolve this error.
           ERR: Failed to run classifier (-6)
-
- **
- ** This may be due to may dynamic memory fragmentation.
+  
+    This may be due to may dynamic memory fragmentation.
 
     "boards.local.txt" introduced in Arduino IDE 1.6.6. This file can be used to override properties defined in boards.txt or
     define new properties without modifying boards.txt. It must be placed in the same folder as the boards.txt it supplements.
  
- ** Try defining "-DEI_CLASSIFIER_ALLOCATION_STATIC" in boards.local.txt
- ** (create if it doesn't exist) and copy this file to
- ** <                    ARDUINO_CORE_INSTALL_PATH>\arduino\hardware\<mbed_core>  \<core_version>/
-     C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\boards.local.txt
+    Try defining "-DEI_CLASSIFIER_ALLOCATION_STATIC" in boards.local.txt
+    (create if it doesn't exist) and copy this file to
+    <                    ARDUINO_CORE_INSTALL_PATH>\arduino\hardware\<mbed_core>  \<core_version>/
+     C:\Users\<username>>\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\boards.local.txt
         envie_m7.build.extra_flags=-DEI_CLASSIFIER_ALLOCATION_STATIC <--Added 1 line
- **
- ** See
- ** (https://support.arduino.cc/hc/en-us/articles/360012076960-Where-are-the-installed-cores-located-)
- ** to find where Arduino installs cores on your machine.
- **
- ** If the problem persists then there's not enough memory for this model and application.
+   
+    See
+    (https://support.arduino.cc/hc/en-us/articles/360012076960-Where-are-the-installed-cores-located-)
+    to find where Arduino installs cores on your machine.
+ 
+    If the problem persists then there's not enough memory for this model and application.
     The error then means we can’t allocate enough memory to load the NN.
-    ----------------------------------------------------------------------------------------------------------------------------------
+*/
+/* INFO: Portenta H7 Board ------------------------------------- */
+/*
     Arm® Cortex®-M7 core at up to
       480 MHz with double-precision
       FPU and 16K data + 16K
@@ -85,41 +129,23 @@
     If you need more memory, Portenta H7 can host up to
          64 MByte of SDRAM, and
         128 MByte of QSPI Flash.
-    ----------------------------------------------------------------------------------------------------------------------------------
+
+    Sketch uses 295,672 bytes (37%) of program storage space.
+    Maximum is  786,432 bytes.
+    Global variables use 322,904 bytes (61%) of dynamic memory,
+    leaving              200,720 bytes for local variables.
+    Maximum is           523,624 bytes.
+*/
+/* INFO: Portenta Speed Flag ----------------------------------------------- */
+/*
     C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\variants\PORTENTA_H7_M7\cflags.txt file,
     where you switch the default setting on line 14 from -Os to -O3.
-    ----------------------------------------------------------------------------------------------------------------------------------
-    Portenta has an external 8MB RAM module (albeit slower), you could have a huge heap by just using Portenta_SDRAM
-    library and replacing the calls to malloc and free with ea_malloc and ea_free.
-    Can also do this:
-    #include <SDRAM.h> //Use the SDRAM library for the Portenta.
-    SDRAMClass ram;
-    uint8_t *b;
-    void setup()
-    {
-      ram.begin();
-      //Example for a uint8 array.
-      b = (uint8_t *)ram.malloc(320 * 240 * sizeof(uint8_t));
-    }
-    SDRAM Example: https://github.com/arduino/ArduinoCore-mbed/issues/38
-    ----------------------------------------------------------------------------------------------------------------------------------
-    Build in EI "Arduino Libarary"
-    Sketch uses 380,064 bytes (48%) of program storage space. Maximum is 786,432 bytes.
-    Global variables use 67,688 bytes (12%) of dynamic memory, leaving 455,936 bytes for local variables. Maximum is 523,624 bytes.
-    Downloaded as "ei-clone-of-fomo-washers-and-screws-160x160-arduino-1.0.14.zip"
-
-    Sketch uses 379992 bytes (48%) of program storage space. Maximum is 786432 bytes.
-    Global variables use 356320 bytes (68%) of dynamic memory, leaving 167304 bytes for local variables. Maximum is 523624 bytes.
-    ----------------------------------------------------------------------------------------------------------------------------------
+*/
+/* INFO: Edge Impulse Studio ------------------------------------- */
+/*
     Build in EI "Arduino Portenta H7"
     If this build fails try reducing the image data. From the EI Studio goto the left side menu "Impulse Design" - "Create Image".
     On the right side the 1st block is "Image Data". Change "Image Width" to 96. Change "Image Height" to 96.
-
-    Sketch uses 639,040 bytes (32%) of program storage space. Maximum is 1,966,080 bytes.
-    Global variables use 38,4336 bytes (73%) of dynamic memory, leaving 139,288 bytes for local variables. Maximum is 523,624 bytes.
-    Downloaded as "clone-of-fomo-washers-and-screws-96x96-portenta-h7-v22-Quantized (int8).zip"
-    This ZIP is not an Arduino library. Flash the Portenta via the batch file. 
-    You're using an untested version of Arduino CLI, this might cause issues (found: 0.23.0, expected: 0.18.x
 
     Put Portenta in firmware load mode by double-clicking the RESET button on the Portenta.
 
@@ -162,7 +188,6 @@
       To set up your development with Edge Impulse, run 'edge-impulse-daemon'
       To run your impulse on your development board, run 'edge-impulse-run-impulse'
       Press any key to continue . . .
-    ----------------------------------------------------------------------------------------------------------------------------------
  */
 
 #define ALIGN_PTR(p,a)   ((p & (a-1)) ?(((uintptr_t)p + a) & ~(uintptr_t)(a-1)) : p)
@@ -178,20 +203,28 @@ typedef struct {
 		int y;
 		int width;
 		int height;
+    float value;
 	} mm_bounding_box_t;
 
+
+/*
+** @brief      A complete package has 3 screws and 3 washers in the image.
+*/
 const int bounding_box_count = 3;
 mm_bounding_box_t bb_listScrew[bounding_box_count] =  {
-                                                       {0, 0, 0, 0},
-                                                       {0, 0, 0, 0},
-                                                       {0, 0, 0, 0},
+                                                       {0, 0, 0, 0, 0.0},
+                                                       {0, 0, 0, 0, 0.0},
+                                                       {0, 0, 0, 0, 0.0},
                                                       };
 mm_bounding_box_t bb_listWasher[bounding_box_count] = {
-                                                       {0, -1, 0, 0},
-                                                       {0, -1, 0, 0},
-                                                       {0, -1, 0, 0},
+                                                       {0, -1, 0, 0, 0.0},
+                                                       {0, -1, 0, 0, 0.0},
+                                                       {0, -1, 0, 0, 0.0},
                                                       };
 
+/*
+** @brief      Since we will be evaluating the location of the screws versus the washers later we start at a known location.
+*/
 void InitializeBB()
 {
   // Initialize Bounding Box List[].
@@ -201,18 +234,20 @@ void InitializeBB()
     bb_listScrew[ix].y       =  0;
     bb_listScrew[ix].width   =  0;
     bb_listScrew[ix].height  =  0;
+    bb_listScrew[ix].value   =  0.0;
 
     bb_listWasher[ix].x      =  0;  // Washers must be above screws for a correct package.
     bb_listWasher[ix].y      = -1;  // Here we force washers below screws.
     bb_listWasher[ix].width  =  0;
     bb_listWasher[ix].height =  0;
+    bb_listWasher[ix].value  =  0.0;
   }
 }
 
 /* Private Variables ------------------------------------------------------- */
 
 /*
-** @brief points to the output of the capture
+** @brief      Points to the output of the capture
 */
 static uint8_t *ei_camera_capture_out = NULL;
 
@@ -229,12 +264,12 @@ static uint8_t ei_camera_frame_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMER
 static bool debug_nn          = false;  // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised    = false;
 static bool is_ll_initialised = false;
-HM01B0 himax;
+HM01B0 himax;                           // Reference Vision Shield on-board camera.
 static Camera cam(himax);
-FrameBuffer fb;
+FrameBuffer fb;                         // Frame Buffer.
 
 bool pinD05IsAsserted         = false;  // Simulate pulling D5 low indicating yellow bin is in place.
-bool pauseCapture             = false;
+bool pauseCapture             = false;  // Pause M7 loop(). (Used for debugging.)
 
 /* Local Subroutines ------------------------------------------------------- */
 
@@ -287,11 +322,15 @@ int setOneVar(int varFromCM4)
 }
 
 /* Function definitions ------------------------------------------------------- */
-bool ei_camera_init(void);
+bool ei_camera_init(  void);
 void ei_camera_deinit(void);
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
+bool ei_camera_capture(          uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
 int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_t *resize_col_sz, uint32_t *resize_row_sz, bool *do_resize);
 
+/**
+ * @brief      Handle keyboard input from user.
+ *             Check if new serial data is available.
+ */
 void handleSerial()
 {
   while (Serial.available() > 0)
@@ -304,6 +343,7 @@ void handleSerial()
       case 'L':
       case 'l':
       {
+        // Simulate asserting pin D05
         pinD05IsAsserted = true;
         Serial.println("pinD05IsAsserted = true via keyboard");      
         delay(5555);
@@ -319,7 +359,7 @@ void handleSerial()
       }
       case 'X':
       {
-        // Do something else
+        // Do something eXtreme!
         break;
       }
     }
@@ -337,11 +377,12 @@ void setup()
     Serial.println("Edge Impulse Microphone Audio Inferencing Demo on M4.\n");
     Serial.println("A correct Audio Inference on M4 will trigger an action in M7.\n");
 
-    /* Setup M4 to M7 Communication -------------------------------------------- */
+    /* Setup M4 to M7 Communication ---------------------------------------- */
     RPC.begin(); 
     bootM4(); //LL_RCC_ForceCM4Boot();  
     RPC.bind("setOneVar", setOneVar); // Do these have to be the same?
 
+    /* Setup Camera -------------------------------------------------------- */
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
     // initialise the SDRAM
     SDRAM.begin(SDRAM_START_ADDRESS);
@@ -355,6 +396,7 @@ void setup()
         ei_printf("Camera initialized\r\n");
     }
 
+    /* Configure Edge Impulse Machine Learning Library --------------------- */
     for (size_t ix = 0; ix < ei_dsp_blocks_size; ix++)
     {
         ei_model_dsp_t block = ei_dsp_blocks[ix];
@@ -369,17 +411,17 @@ void setup()
             }
         }
     }
-    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(LEDR, OUTPUT);              // On-board RED LED.
+    pinMode(LEDG, OUTPUT);              // On-board GRN LED.
+    pinMode(LEDB, OUTPUT);              // On-board BLU LED.
     pinMode(D5, INPUT_PULLUP);          // Assume this is a limit switch indicating empty package is in place.
 }
 
-bool packageLoading     = false;
-bool packageCorrect     = false;
-int packageScrew[3];
-int packageWasher[3];
-int screwIdx            = 0;
-int washerIdx           = 0;
-long packageLoadingTime = 0;
+bool packageLoading     = false;        // We start in a "not loading" state.
+bool packageCorrect     = false;        // We assume the package is not correct.
+int screwIdx            = 0;            // Index into screw buffer[].
+int washerIdx           = 0;            // Index into washer buffer[].
+long packageLoadingTime = 0;            // How fast die the package get made in.
 
 /**
 * @brief      Get data and run inferencing.
@@ -392,7 +434,7 @@ void loop()
 
     if (pauseCapture)
     {
-      handleSerial();
+      handleSerial();                   // Pause video capture so we can see microphone capture.
       delay(500);
     }
 
@@ -403,29 +445,32 @@ void loop()
       Serial.write(RPC.read()); // Check if the M4 has sent an RPC println().
     }
 
-    // TODO: When yellow bin enters frame set packageLoading to true.
-    // TODO: Add voice recognition to indicate yellow bin is in place.
-    //      (Educational purposes only. Prove we can do vision and voice ML at the same time on the same board.)
-    //      (Put vision ML on M7 and voice ML on M4.)
+    // TODO: When yellow bin enters frame set packageLoading to true. Do this via vision ML.
     // For now we assume package loading start immediately after the last package got loaded AND
-    // pin D5 is low indicating the package is in place via a virtual limit switch.
-    // pinD05IsAsserted ==> D5==LOW    
+    // pin D5 is low indicating the package is in place via
+    //    a virtual limit switch: pinD05IsAsserted ==> D5==LOW    
+    // or
+    //    The M4 core recognizes the keyphrase and then notifies this core, M7.
+    //    The voice recognition indicates the yellow bin is in place.
+    //    This is for educational purposes only, provinge we can do vision and voice ML at the same time on the same board.
+    //    Vision ML on M7 and voice ML on M4.
     if (false==packageLoading && pinD05IsAsserted)
     {
       packageLoading    = true;         // Update currect state of package operation.
       pinD05IsAsserted  = false;        // Reset trigger that got us in here.
       packageCorrect    = false;        // Update final state of package operation.
-      packageLoadingTime = millis();
-      digitalWrite(LEDR,HIGH);
-      digitalWrite(LEDG,HIGH);
-      digitalWrite(LEDB,LOW);           // Blue LED means loading.
+      packageLoadingTime = millis();    // Set the start time.
+      digitalWrite(LEDR,HIGH);          // Red is off.
+      digitalWrite(LEDG,HIGH);          // Green is off.
+      digitalWrite(LEDB,LOW);           // Blue is on meaning we are loading a package.
       Serial.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Starting to load a new package...");
     }
 
     if(packageCorrect)
     {
       // Do nothing until package leaves frame and a new loading bin comes into the frame.
-      // For now we simulate with pinD05IsAsserted, e.g. a limit switch is asserted on D05 pin.
+      // For now we simulate with pinD05IsAsserted, e.g. a limit switch is asserted on D05 pin or
+      // a keyphrase is recognized.
     }
     else
     {
@@ -440,11 +485,12 @@ void loop()
 
     ei_printf("Taking photo with Portenta Vision camera...\n");
 
-    // Setup "signal" for Classifier().
+    // Setup "signal": sets the callback function on the "signal_t" structure to reference the inference buffer.
     ei::signal_t          signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data     = &ei_camera_cutout_get_data;
+    signal.get_data     = &ei_camera_cutout_get_data;  // This tells the "signal" where to get the sampled data from.
 
+    // Take a photo.
     if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH,
                           (size_t)EI_CLASSIFIER_INPUT_HEIGHT, NULL) == false)
     {
@@ -472,30 +518,28 @@ void loop()
     bool bb_found = result.bounding_boxes[0].value > 0;    
 
     // Reset Location Data.
-    packageScrew[0]    =  0;
-    packageScrew[1]    =  0;
-    packageScrew[2]    =  0;
-    packageWasher[0]   = -1;  // Washers must be above screws for a correct package.
-    packageWasher[1]   = -1;  // Here we force washers below screws.
-    packageWasher[2]   = -1;
-    InitializeBB();
+    InitializeBB();           // Initialize bounding box values.
+                              // Washers must be above screws for a correct package.
+                              // Here we force washers below screws.
     screwIdx           =  0;
     washerIdx          =  0;
     
 
-    // Loop thru all objects identified.
+    // Loop thru all objects identified in the photo.
     for (size_t ix = 0; ix < EI_CLASSIFIER_OBJECT_DETECTION_COUNT; ix++)
     {
         auto bb = result.bounding_boxes[ix];
         if (bb.value == 0)
         {
-            continue; // Continues with the next iteration in the loop.
+            continue; // Continues with the next iteration in the for-loop.
         }
 
-        ei_printf("    %s (\t", bb.label);
-        ei_printf_float(bb.value);
+        // Print bounding box attributes.
+        ei_printf("    %s (\t", bb.label);  // label
+        ei_printf_float(bb.value);          // prediction "label" is 'label', aka, like 96% sure it's a washer.
         ei_printf(") [ x: %lu, y: %lu, width: %lu, height: %lu ]\n", bb.x, bb.y, bb.width, bb.height);
 
+        // TODO: Fix this. I found it hard to train a model with scres, washers and a relatively large yellow bin (2"x3").
         // // Determine if a new packaging bin has come into the loading area.
         // if ( (strcmp(bb.label,"package_bin")==0) && (false==packageLoading) )
         // {
@@ -511,29 +555,29 @@ void loop()
         // }
         
         // Example Screw Location Data:
-        // Predictions (DSP: 0 ms., Classification: 71 ms., Anomaly: 0 ms.):
-        // washer (0.996094) [ x: 32, y: 32, width:  8, height:  8 ]
-        // washer (0.996094) [ x: 48, y: 32, width:  8, height:  8 ]
-        // washer (0.996094) [ x: 64, y: 32, width:  8, height:  8 ]
-        // screw  (0.980469) [ x: 24, y: 56, width: 16, height: 16 ]
-        // screw  (0.996094) [ x: 48, y: 56, width:  8, height: 16 ]
-        // screw  (0.988281) [ x: 64, y: 64, width: 16, height:  8 ]
+        //    Predictions (DSP: 0 ms., Classification: 71 ms., Anomaly: 0 ms.):
+        //    washer (0.996094) [ x: 32, y: 32, width:  8, height:  8 ]
+        //    washer (0.996094) [ x: 48, y: 32, width:  8, height:  8 ]
+        //    washer (0.996094) [ x: 64, y: 32, width:  8, height:  8 ]
+        //    screw  (0.980469) [ x: 24, y: 56, width: 16, height: 16 ]
+        //    screw  (0.996094) [ x: 48, y: 56, width:  8, height: 16 ]
+        //    screw  (0.988281) [ x: 64, y: 64, width: 16, height:  8 ]
 
         // Save the currently identified screw's location.
         if (strcmp(bb.label,"screw")==0)
         {
           int screwIdx_Buf = screwIdx;
-          if(screwIdx >= bounding_box_count)                // TODO: "2" is a magic number. Base this on the current buffer size.
+          if(screwIdx >= bounding_box_count)                // This is based on the current bounding boxes buffer size.
           {
             screwIdx_Buf = bounding_box_count-1;            // Don't overflow the buffer[].
             packageCorrect = false;                         // screwIdx is too large.
           }
-          // TODO: Make a "struct" and save all location data not just the y-axis.
-          packageScrew[screwIdx_Buf]        = bb.y;         // Save screw location.
+          // Save all location data not just the y-axis that we are currently interested in.
           bb_listScrew[screwIdx_Buf].x      = bb.x;
           bb_listScrew[screwIdx_Buf].y      = bb.y;
           bb_listScrew[screwIdx_Buf].width  = bb.width;
           bb_listScrew[screwIdx_Buf].height = bb.height;
+          bb_listScrew[screwIdx_Buf].value  = bb.value;
           screwIdx = screwIdx + 1;                          // Point to next save location.
         }
         // Save the currently identified washer's location.
@@ -544,11 +588,11 @@ void loop()
           {
             washerIdx_Buf = bounding_box_count - 1;            
           }
-          packageWasher[washerIdx_Buf]        = bb.y;
           bb_listWasher[washerIdx_Buf].x      = bb.x;
           bb_listWasher[washerIdx_Buf].y      = bb.y;
           bb_listWasher[washerIdx_Buf].width  = bb.width;
           bb_listWasher[washerIdx_Buf].height = bb.height;          
+          bb_listWasher[washerIdx_Buf].value = bb.value;   
           washerIdx = washerIdx + 1;
         }
     } // END: Loop thru all objects identified.
