@@ -42,5 +42,5 @@ REM ***
 REM Add DFU Suffix
 REM ***
 "C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\tools\dfu-util\0.10.0-arduino1\dfu-suffix" --add "C:\Users\mmarc\AppData\Local\Temp\arduino-sketch-0F02D06D6ACA4A18DA886FED910D1A92\EI_portenta_h7_camera.ino.bin" --vid 0x2341 --pid 0x035b 
-
+ECHO ***
 PAUSE

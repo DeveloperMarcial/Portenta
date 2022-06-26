@@ -55,7 +55,38 @@
 #include "edge-impulse-sdk/dsp/image/image.hpp"             // Edge Impulse library to handle image conversions, cropping
 #include <string.h>                                         // Arduino library: https://www.arduino.cc/reference/en/language/variables/data-types/stringobject/ 
 
-/* Constant defines -------------------------------------------------------- */
+/* Private Constants and Structures ---------------------------------------- */
+typedef struct {
+    size_t width;
+    size_t height;
+} ei_device_resize_resolutions_t;
+
+typedef struct {
+		int x;
+		int y;
+		int width;
+		int height;
+    float value;
+	} mm_bounding_box_t;
+
+
+/*
+** @brief      A complete package has 3 screws and 3 washers in the image.
+*/
+const int bounding_box_count = 3;
+mm_bounding_box_t bb_listScrew[bounding_box_count] =  {
+                                                       {0, 1000, 0, 0, 0.0},
+                                                       {0, 1000, 0, 0, 0.0},
+                                                       {0, 1000, 0, 0, 0.0},
+                                                      };
+mm_bounding_box_t bb_listWasher[bounding_box_count] = {
+                                                       {0,   -1, 0, 0, 0.0},
+                                                       {0,   -1, 0, 0, 0.0},
+                                                       {0,   -1, 0, 0, 0.0},
+                                                      };
+
+/* Constant Definitions ---------------------------------------------------- */
+
 //CAMERA RESOLUTION: 320 x 320 active pixel resolution with support for QVGA.
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
@@ -67,6 +98,12 @@
 //#define EI_CAMERA_FRAME_BUFFER_HEAP
 //    - SDRAM
 #define EI_CAMERA_FRAME_BUFFER_SDRAM
+
+/* Function Definitions ------------------------------------------------------- */
+bool ei_camera_init(  void);
+void ei_camera_deinit(void);
+bool ei_camera_capture(          uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
+int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_t *resize_col_sz, uint32_t *resize_row_sz, bool *do_resize);
 
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
 /* INFO: Portenta SDRAM ---------------------------------------------------- */
@@ -88,7 +125,7 @@
 #include "SDRAM.h"                      // Storage for frame buffer in 8Mb SDRAM.
 #endif
 
-/* INFO: TFLite arena allocation issue ------------------------------------- */
+/* INFO: TFLite Arena Allocation Issue ------------------------------------- */
 /*
     NOTE: If you run into TFLite arena allocation issue.
           Failed to allocate TFLite arena (764,166 bytes) <-- My version of "boards.local.txt" did not resolve this error.
@@ -138,7 +175,7 @@
 */
 /* INFO: Portenta Speed Flag ----------------------------------------------- */
 /*
-    C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\variants\PORTENTA_H7_M7\cflags.txt file,
+    "C:\Users\<username>\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\variants\PORTENTA_H7_M7\cflags.txt" file,
     where you switch the default setting on line 14 from -Os to -O3.
 */
 /* INFO: Edge Impulse Studio ------------------------------------- */
@@ -192,35 +229,6 @@
 
 #define ALIGN_PTR(p,a)   ((p & (a-1)) ?(((uintptr_t)p + a) & ~(uintptr_t)(a-1)) : p)
 
-/* Private Constants and Structures ---------------------------------------- */
-typedef struct {
-    size_t width;
-    size_t height;
-} ei_device_resize_resolutions_t;
-
-typedef struct {
-		int x;
-		int y;
-		int width;
-		int height;
-    float value;
-	} mm_bounding_box_t;
-
-
-/*
-** @brief      A complete package has 3 screws and 3 washers in the image.
-*/
-const int bounding_box_count = 3;
-mm_bounding_box_t bb_listScrew[bounding_box_count] =  {
-                                                       {0, 0, 0, 0, 0.0},
-                                                       {0, 0, 0, 0, 0.0},
-                                                       {0, 0, 0, 0, 0.0},
-                                                      };
-mm_bounding_box_t bb_listWasher[bounding_box_count] = {
-                                                       {0, -1, 0, 0, 0.0},
-                                                       {0, -1, 0, 0, 0.0},
-                                                       {0, -1, 0, 0, 0.0},
-                                                      };
 
 /*
 ** @brief      Since we will be evaluating the location of the screws versus the washers later we start at a known location.
@@ -231,13 +239,13 @@ void InitializeBB()
 	for (size_t ix = 0; ix < bounding_box_count; ix++)
 	{
     bb_listScrew[ix].x       =  0;
-    bb_listScrew[ix].y       =  0;
-    bb_listScrew[ix].width   =  0;
+    bb_listScrew[ix].y       =  1000; // Screws must be below washers for a correct package.
+    bb_listScrew[ix].width   =  0;    // Here we force screws well above washers. (a value outside the photo)
     bb_listScrew[ix].height  =  0;
     bb_listScrew[ix].value   =  0.0;
 
-    bb_listWasher[ix].x      =  0;  // Washers must be above screws for a correct package.
-    bb_listWasher[ix].y      = -1;  // Here we force washers below screws.
+    bb_listWasher[ix].x      =  0;    // Washers must be above screws for a correct package.
+    bb_listWasher[ix].y      = -1;    // Here we force washers below screws.
     bb_listWasher[ix].width  =  0;
     bb_listWasher[ix].height =  0;
     bb_listWasher[ix].value  =  0.0;
@@ -296,9 +304,9 @@ char ei_get_serial_byte(void)
 /* Setup M4 to M7 Communication -------------------------------------------- */
 int m7IntGlobal = 1234;                 // Set an M7 core global variable.
 
-int setOneVar(int varFromCM4)
+int setOnVarInM7(int varFromCM4)
 {
-    // TODO: Create a message buffer to feed println() since setOneVar()
+    // TODO: Create a message buffer to feed println() since setOnVarInM7()
     //       can be triggered async to actions in this code.
     //       Otherwise, the Serial Monitor can get garbled.
     m7IntGlobal = (int)varFromCM4;
@@ -306,7 +314,7 @@ int setOneVar(int varFromCM4)
     switch (m7IntGlobal)
     {
       case 0:
-      case 1:
+      case 42:
       {
           pinD05IsAsserted = true;
           Serial.println("pinD05IsAsserted = true via M4");      
@@ -321,11 +329,23 @@ int setOneVar(int varFromCM4)
     return m7IntGlobal ;                // Return set value to M4.
 }
 
-/* Function definitions ------------------------------------------------------- */
-bool ei_camera_init(  void);
-void ei_camera_deinit(void);
-bool ei_camera_capture(          uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
-int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_t *resize_col_sz, uint32_t *resize_row_sz, bool *do_resize);
+bool micInferenceComplete = true;       // When M4 starts a mic inference it will set this false.
+                                        // This assures multiple groupings of M4 RPC.println() are completely
+                                        // sent to the M7, aka, the serial output is kept organized and pretty.
+                                        // Otherwise, for all other M4 println() we will just let them print.
+/**
+ * @brief      To prevent the serial output from looking garbled we wait in
+ *             RPC.avaliable() until "micInferenceComplete" asserts.
+ *             NOTE: In setup() make sure to do something like:
+ *                   RPC.bind("setMicInferenceComplete", setMicInferenceComplete);
+ *
+ * @return     Value set in M7.
+ */
+bool setMicInferenceComplete(bool var1_FromCM4) 
+{
+    micInferenceComplete = (bool)var1_FromCM4;// Set M7 variable to M4 sent in value.
+    return micInferenceComplete;              // Return value set in M7.                   
+}
 
 /**
  * @brief      Handle keyboard input from user.
@@ -336,6 +356,10 @@ void handleSerial()
   while (Serial.available() > 0)
   {
     char incomingCharacter = Serial.read();
+    if ( (10==incomingCharacter) || (13==incomingCharacter) )
+    {
+      continue;                         // Skip carriage return and line feed.
+    }
     Serial.print("incomingCharacter=");
     Serial.println(incomingCharacter);
     switch (incomingCharacter)
@@ -355,6 +379,23 @@ void handleSerial()
         pauseCapture = !pauseCapture;
         Serial.print("pauseCapture=");
         Serial.println(pauseCapture);
+        break;
+      }
+      case 'U':
+      case 'u':
+      {
+        // Show M4 firmware version.
+        // Send value to M7 indicating the successful results.
+          RPC.call("getM4Version", 0xACE);     
+        break;
+      }
+      case 'V':
+      case 'v':
+      {
+        // Show M7 firmware version.
+        // Ex) C:\Users\<username>\OneDrive\Documents\Arduino\EI_portenta_h7_camera\EI_portenta_h7_camera.ino Jun 26 2022 13:02:34  IDE 10607
+        Serial.print(__FILE__ " " __DATE__ " " __TIME__);
+        Serial.print("  IDE "); Serial.println(ARDUINO);
         break;
       }
       case 'X':
@@ -377,10 +418,23 @@ void setup()
     Serial.println("Edge Impulse Microphone Audio Inferencing Demo on M4.\n");
     Serial.println("A correct Audio Inference on M4 will trigger an action in M7.\n");
 
+    Serial.print(__FILE__ " " __DATE__ " " __TIME__);
+    Serial.print("  IDE "); Serial.println(ARDUINO);
+
     /* Setup M4 to M7 Communication ---------------------------------------- */
     RPC.begin(); 
-    bootM4(); //LL_RCC_ForceCM4Boot();  
-    RPC.bind("setOneVar", setOneVar); // Do these have to be the same?
+
+    //bootM4(); //LL_RCC_ForceCM4Boot();// Including the bootM4() causes the M4 core to run on startup.
+
+    RPC.bind("setOneVar", setOnVarInM7);// These arguments do not have to be the same.
+                                        // M4 calls "setOnVar()".
+                                        // M7 has a routine called "setOnVarInM7()".
+                                        // Thus, bind() is a bounden between the name and function.    
+
+    // When an audio prediction is complete on the M4,
+    // the M4 sends multiple text statements to the M7 to be sent to the serial output.
+    // To assure the M7 prints all these statements as one grouping, we use this binding.
+    RPC.bind("setMicInferenceComplete", setMicInferenceComplete);   
 
     /* Setup Camera -------------------------------------------------------- */
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
@@ -440,9 +494,20 @@ void loop()
 
     /* Handle M4 to M7 Communication --------------------------------------- */
     //Serial.println("M7 global variable: "+ String(m7IntGlobal));
-    while (RPC.available())
+        // Start printing the M4 status update to the serial output.
+    // On M7, print everything that is received over the RPC stream interface.
+    // Buffer it, otherwise all characters will be interleaved by other prints.
+    String buffer = "";
+    while (RPC.available() && micInferenceComplete)
     {
-      Serial.write(RPC.read()); // Check if the M4 has sent an RPC println().
+      // M4 has sent an RPC println().
+      buffer += (char)RPC.read(); // Fill the buffer with characters.
+    }
+
+    if (buffer.length() > 0)
+    {
+      // Start printing the M7 status update to the serial output.
+      Serial.print(buffer);
     }
 
     // TODO: When yellow bin enters frame set packageLoading to true. Do this via vision ML.
