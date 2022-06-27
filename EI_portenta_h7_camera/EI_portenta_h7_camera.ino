@@ -26,6 +26,12 @@
  * and saved herin as the Software "EI_portenta_h7_camera.ino"                      *
  * Copyright (c) 2022 M. Marcial                                                    *
  *                                                                                  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy     *
+ * of this software and associated documentation files (the "Software"), to deal    *
+ * in the Software without restriction, including without limitation the rights     *
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell        *
+ * copies of the Software, and to permit persons to whom the Software is            *
+ * furnished to do so, subject to the following conditions:                         *
  * The above copyright notice shall be included in                                  *    
  * all copies or substantial portions of the Software.                              *
  *                                                                                  *
@@ -41,7 +47,10 @@
 
 /* Includes ---------------------------------------------------------------- */
 #include "RPC.h"                                            // Comes with the mbed board installation. Used for M4-M7 communications.
+
+//version=1.0.10
 #include <FOMO_Washers_and_Screws_96x96_inferencing.h>      // Edge Impulse generated code to handle the Machine Learning in my Arduino code.
+
 #include "camera.h"                                         // Arduino library to handle color, resolution, framebuffer, framerate, etc.
                                                             // Also for frame capturing, motion detection and pattern recognition. 
 #include "himax.h"                                          // Similar to "camera.h" but specific for HM01B0.
@@ -66,7 +75,7 @@ typedef struct {
 		int y;
 		int width;
 		int height;
-    float value;
+    float value;  // Prediction value for what is inside bounding box.
 	} mm_bounding_box_t;
 
 
@@ -91,22 +100,25 @@ mm_bounding_box_t bb_listWasher[bounding_box_count] = {
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
 
-// Frame Buffer allocation options:
-//    - static (default if neither below is chosen)
-// No #define defined.
-//    - heap or
-//#define EI_CAMERA_FRAME_BUFFER_HEAP
-//    - SDRAM
-#define EI_CAMERA_FRAME_BUFFER_SDRAM
+// ---------------------------------------------------------+
+// Frame Buffer allocation options:                     //  |
+// ---------------------------------------------------------+
+//    - Static (default if neither below is chosen)     //  |
+// No #define defined.                                  //  |
+//    - Heap                                            //  |
+//#define EI_CAMERA_FRAME_BUFFER_HEAP                   //  |
+//    - SDRAM                                           //  |
+#define EI_CAMERA_FRAME_BUFFER_SDRAM                    //  |
+// ---------------------------------------------------------+
 
-/* Function Definitions ------------------------------------------------------- */
+/* Edge Impulse Machine Learning Model Function Definitions ---------------- */
 bool ei_camera_init(  void);
 void ei_camera_deinit(void);
 bool ei_camera_capture(          uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
 int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_t *resize_col_sz, uint32_t *resize_row_sz, bool *do_resize);
 
-#ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
 /* INFO: Portenta SDRAM ---------------------------------------------------- */
+#ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
 /*
     Portenta has an external 8MB RAM module (albeit slower), you could have a huge heap by just using Portenta_SDRAM
     library and replacing the calls to malloc and free with ea_malloc and ea_free.
@@ -149,6 +161,7 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
     If the problem persists then there's not enough memory for this model and application.
     The error then means we can’t allocate enough memory to load the NN.
 */
+
 /* INFO: Portenta H7 Board ------------------------------------- */
 /*
     Arm® Cortex®-M7 core at up to
@@ -162,22 +175,27 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
      2 Mbytes of Flash Memory with read-while-write support
      1 Mbytes of RAM
      8 Mbytes SDRAM
-    16 Mbytes NOR Flash
-    If you need more memory, Portenta H7 can host up to
+    16 Mbytes NOR Flash (Flash QSPI)
+    If you need more memory, Portenta H7 can be special ordered with up to
          64 MByte of SDRAM, and
         128 MByte of QSPI Flash.
 
-    Sketch uses 295,672 bytes (37%) of program storage space.
+    The flash memory can be split by the Aruino IDE:
+    M7      M4
+    1.0MB   1.0MB
+    1.5MB   0.5MB
+    2.0MB   8.0 SDRAM
+
+    Sketch uses 297,440 bytes (37%) of program storage space.
     Maximum is  786,432 bytes.
-    Global variables use 322,904 bytes (61%) of dynamic memory,
-    leaving              200,720 bytes for local variables.
-    Maximum is           523,624 bytes.
 */
+
 /* INFO: Portenta Speed Flag ----------------------------------------------- */
 /*
     "C:\Users\<username>\AppData\Local\Arduino15\packages\arduino\hardware\mbed_portenta\3.1.1\variants\PORTENTA_H7_M7\cflags.txt" file,
     where you switch the default setting on line 14 from -Os to -O3.
 */
+
 /* INFO: Edge Impulse Studio ------------------------------------- */
 /*
     Build in EI "Arduino Portenta H7"
@@ -228,7 +246,6 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
  */
 
 #define ALIGN_PTR(p,a)   ((p & (a-1)) ?(((uintptr_t)p + a) & ~(uintptr_t)(a-1)) : p)
-
 
 /*
 ** @brief      Since we will be evaluating the location of the screws versus the washers later we start at a known location.
@@ -376,6 +393,7 @@ void handleSerial()
       case 'P':
       case 'p':
       {
+        // Pause M7 loop() below.
         pauseCapture = !pauseCapture;
         Serial.print("pauseCapture=");
         Serial.println(pauseCapture);
@@ -393,7 +411,10 @@ void handleSerial()
       case 'v':
       {
         // Show M7 firmware version.
-        // Ex) C:\Users\<username>\OneDrive\Documents\Arduino\EI_portenta_h7_camera\EI_portenta_h7_camera.ino Jun 26 2022 13:02:34  IDE 10607
+        // Ex) C:\Users\<username>\OneDrive\Documents\Arduino\EI_portenta_h7_camera\
+        //     EI_portenta_h7_camera.ino
+        //     Jun 26 2022 13:02:34
+        //     IDE 10607
         Serial.print(__FILE__ " " __DATE__ " " __TIME__);
         Serial.print("  IDE "); Serial.println(ARDUINO);
         break;
@@ -404,7 +425,7 @@ void handleSerial()
         break;
       }
     }
- }
+  }
 }
 
 /**
@@ -494,14 +515,14 @@ void loop()
 
     /* Handle M4 to M7 Communication --------------------------------------- */
     //Serial.println("M7 global variable: "+ String(m7IntGlobal));
-        // Start printing the M4 status update to the serial output.
+    // Start printing the M4 status update to the serial output.
     // On M7, print everything that is received over the RPC stream interface.
     // Buffer it, otherwise all characters will be interleaved by other prints.
     String buffer = "";
     while (RPC.available() && micInferenceComplete)
     {
       // M4 has sent an RPC println().
-      buffer += (char)RPC.read(); // Fill the buffer with characters.
+      buffer += (char)RPC.read();       // Fill the buffer with characters.
     }
 
     if (buffer.length() > 0)
@@ -563,7 +584,7 @@ void loop()
         return;
     }
     
-    ei_impulse_result_t result = { 0 };   // "result" of Classifier().
+    ei_impulse_result_t result = { 0 }; // "result" of Classifier().
 
     // Run the Classifier().
     EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
@@ -583,11 +604,11 @@ void loop()
     bool bb_found = result.bounding_boxes[0].value > 0;    
 
     // Reset Location Data.
-    InitializeBB();           // Initialize bounding box values.
-                              // Washers must be above screws for a correct package.
-                              // Here we force washers below screws.
-    screwIdx           =  0;
-    washerIdx          =  0;
+    InitializeBB();                     // Initialize bounding box values.
+                                        // Washers must be above screws for a correct package.
+                                        // Here we force washers below screws.
+    screwIdx           =  0;            // Index into screw  bounding box buffer[].
+    washerIdx          =  0;            // Index into washer bounding box buffer[].
     
 
     // Loop thru all objects identified in the photo.
@@ -596,12 +617,13 @@ void loop()
         auto bb = result.bounding_boxes[ix];
         if (bb.value == 0)
         {
-            continue; // Continues with the next iteration in the for-loop.
+            // The prediction percentage for what has been identified in the this bounding box is ZERO!
+            continue;                   // Continues with the next iteration in the for-loop.
         }
 
         // Print bounding box attributes.
-        ei_printf("    %s (\t", bb.label);  // label
-        ei_printf_float(bb.value);          // prediction "label" is 'label', aka, like 96% sure it's a washer.
+        ei_printf("    %s (\t", bb.label);  // Label: "washer", "screw"
+        ei_printf_float(bb.value);          // Prediction "label" is 'label', aka, like 96% sure it's a washer.
         ei_printf(") [ x: %lu, y: %lu, width: %lu, height: %lu ]\n", bb.x, bb.y, bb.width, bb.height);
 
         // TODO: Fix this. I found it hard to train a model with scres, washers and a relatively large yellow bin (2"x3").
@@ -632,10 +654,10 @@ void loop()
         if (strcmp(bb.label,"screw")==0)
         {
           int screwIdx_Buf = screwIdx;
-          if(screwIdx >= bounding_box_count)                // This is based on the current bounding boxes buffer size.
+          if(screwIdx >= bounding_box_count)     // This is based on the current bounding boxes buffer size.
           {
-            screwIdx_Buf = bounding_box_count-1;            // Don't overflow the buffer[].
-            packageCorrect = false;                         // screwIdx is too large.
+            screwIdx_Buf = bounding_box_count-1; // Don't overflow the buffer[].
+            packageCorrect = false;              // screwIdx is too large.
           }
           // Save all location data not just the y-axis that we are currently interested in.
           bb_listScrew[screwIdx_Buf].x      = bb.x;
@@ -643,7 +665,7 @@ void loop()
           bb_listScrew[screwIdx_Buf].width  = bb.width;
           bb_listScrew[screwIdx_Buf].height = bb.height;
           bb_listScrew[screwIdx_Buf].value  = bb.value;
-          screwIdx = screwIdx + 1;                          // Point to next save location.
+          screwIdx = screwIdx + 1;      // Point to next save location.
         }
         // Save the currently identified washer's location.
         if (strcmp(bb.label,"washer")==0)
@@ -657,7 +679,7 @@ void loop()
           bb_listWasher[washerIdx_Buf].y      = bb.y;
           bb_listWasher[washerIdx_Buf].width  = bb.width;
           bb_listWasher[washerIdx_Buf].height = bb.height;          
-          bb_listWasher[washerIdx_Buf].value = bb.value;   
+          bb_listWasher[washerIdx_Buf].value  = bb.value;   
           washerIdx = washerIdx + 1;
         }
     } // END: Loop thru all objects identified.
@@ -665,7 +687,7 @@ void loop()
     if ( (screwIdx > bounding_box_count) || (washerIdx > bounding_box_count) ) // These Idx point to next element to be loaded.
     {
       //packageCorrect = false;
-      digitalWrite(LEDR,LOW);  // RED LED means bad load.
+      digitalWrite(LEDR,LOW);           // RED LED means bad load.
       digitalWrite(LEDG,HIGH);
       digitalWrite(LEDB,HIGH);
       if (screwIdx > bounding_box_count)
@@ -681,7 +703,7 @@ void loop()
     {
       digitalWrite(LEDR,HIGH);  
       digitalWrite(LEDG,HIGH);
-      digitalWrite(LEDB,LOW);     // Resume loading package.
+      digitalWrite(LEDB,LOW);                      // Resume loading package: LED = BLU.
       int washerCorrect = 0;
       for (int i=0; i<bounding_box_count; i++)     // Loop thru washers.
       {
@@ -699,11 +721,11 @@ void loop()
       {
         ei_printf("Package loaded correctly.\n");
         digitalWrite(LEDR,HIGH);      
-        digitalWrite(LEDG,LOW);  // GRN LED means good package.
+        digitalWrite(LEDG,LOW);         // GRN LED means good package.
         digitalWrite(LEDB,HIGH);
         packageCorrect = true;
         // Turn on LED.
-        packageLoading = false; // Start loading next package.
+        packageLoading = false;         // Start loading next package.
         ei_printf(">> >> >> >> >> >> Package loaded in %lu milliseconds. packageLoading = false.\n", millis()-packageLoadingTime);
       }
     } 
