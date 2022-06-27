@@ -1,34 +1,62 @@
-// Sketch uses 188,136 bytes (23%) of program storage space.
-// Maximum is  786,432 bytes.
-// Global variables use 69,760 bytes (13%) of dynamic memory,
-// leaving             453,864 bytes for local variables.
-// Maximum is          523,624 bytes.
+/************************************************************************************
+ * The MIT License (MIT)                                                            *
+ *                                                                                  *
+ * The Software "Cross_Core_Comm-M7.ino" is                                         *
+ * Copyright (c) 2022 M. Marcial                                                    *
+ *                                                                                  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy     *
+ * of this software and associated documentation files (the "Software"), to deal    *
+ * in the Software without restriction, including without limitation the rights     *
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell        *
+ * copies of the Software, and to permit persons to whom the Software is            *
+ * furnished to do so, subject to the following conditions:                         *
+ * The above copyright notice shall be included in                                  *    
+ * all copies or substantial portions of the Software.                              *
+ *                                                                                  *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR       *
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,         *
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE      *
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER           *
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,    *
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE    *
+ * SOFTWARE.                                                                        *
+ ************************************************************************************
+ */
+
+/* Portenta H7 Memory Info ------------------------------------------------- */
+// When programming M4 core maximum is 1,048,576 bytes.
+// When programming M7 core maximum is   786,432 bytes.
+// This Sketch uses 188,224 bytes (23%) of program storage space.
+//       Maximum is 786,432 bytes.
+
 /* Include the Libararies --------------------------------------------------- */
-#include "RPC.h"                        // Comes with the mbed board installation. Used for cross core communication: M7 <---> M4.
+#include "RPC.h"                        // Comes with the mbed board installation.
+                                        // Used for cross-core communication: M7 <---> M4.
 
 using namespace rtos;                   // Since the Portenta cores are based on the Mbed real-time OS,
                                         // this allows access to the many features of the RTOS and its functions in your Arduino sketches
                                         // such as for a multi-threaded Arduino sketch.
                                         // Use the RTOS namespace to create, synchronize, and manage threads. 
 
-Thread blinkRGB_Thread;                 // Define a thread that will control the on-board LED.
+Thread blinkRGB_Thread;                 // Define a thread that will control the on-board Red--Green--Blue LED.
 
 /* Initialize M7 Core Global Variable --------------------------------------- */
 int m7IntGlobalVar1 = 1111;             // M7 global variables that the M4 can change.
-int m7IntGlobalVar2 = 2222;
+int m7IntGlobalVar2 = 2222;             // Used for demonstration cross-core comm purposes.
 int m7IntGlobalVar3 = 3333;
 
 /**
- * @brief      Blink the Portenta Red, Green, Blue Light Emitting Diode.
- *             This routine works in unison with a routine on the M4 called BinkR()
- *             so that the on-board LED blink Red--Green--Purple.
+ * @brief      Blink the Portenta Red--Green-Blue Light Emitting Diode.
+ *             This routine running on the M7 core works in unison with
+ *             a routine on the M4 core called BinkR()
+ *             so that the on-board LED blinks Red--Green--Purple.
  *
  *             This function is spawned once from setup() via:
  *             blinkRGB_Thread.start(BlinkRGB);
  */
 void BlinkRGB()
 {
-  while(true)
+  while(true)                             // Thread code runs repeatedly forever.
   {
     digitalWrite(LEDR, LOW);              // Turn the red LED on (LOW is the voltage level).
     delay(500);                           // Wait for 500 milliseconds.
@@ -57,10 +85,12 @@ void handleSerial()
     char incomingCharacter = Serial.read();
     if ( (10==incomingCharacter) || (13==incomingCharacter) )
     {
-      continue;
+      continue;                         // Ignore carriage return and linefeed chars.
     }
-    Serial.print("incomingCharacter=");
-    Serial.println(incomingCharacter, DEC);
+    
+    // Show what single char came in on Serial port.
+    Serial.print("incomingCharacter="); Serial.println(incomingCharacter, DEC);
+    
     switch (incomingCharacter)
     {
       case 'D':
@@ -90,41 +120,43 @@ void handleSerial()
  }
 }
 
-bool micInferenceComplete = true;             // When M4 starts a mic inference it will set this false.
-                                              // This assures multiple groupings of M4 RPC.println() are completely
-                                              // sent to the M7, aka, the serial output is kept organized and pretty.
-                                              // Otherwise, for all other M4 println() we will just let them print.
+bool micInferenceComplete = true;       // When M4 starts a mic inference it will set this false.
+                                        // This assures multiple groupings of M4 RPC.println() are completely
+                                        // sent to the M7, aka, the serial output is kept organized and pretty.
+                                        // Otherwise, for all other M4 println() we will just let them print.
 /**
  * @brief      To prevent the serial output from looking garbled we wait in
  *             RPC.avaliable() until "micInferenceComplete" asserts.
  *             NOTE: In setup() make sure to do something like:
- *                   RPC.bind("setMicInferenceComplete", setMicInferenceComplete);
+ *                   RPC.bind("setMicInferenceComplete_ByM4", setMicInferenceComplete_InM7);
  *
  * @return     Value set in M7.
  */
 bool setMicInferenceComplete(bool var1_FromCM4) 
 {
-    micInferenceComplete = (bool)var1_FromCM4;// Set M7 variable to M4 sent in value.
-    return micInferenceComplete;              // Return value set in M7.                   
+    // Set M7 variable to M4 sent in value.
+    micInferenceComplete = (bool)var1_FromCM4;
+    return micInferenceComplete;        // Return value set in M7 to M4.
 }
 
 /**
- * @brief      Get value that M4 sent to M7.
+ * @brief      Get value that M4 sent to M7 and store in a M7 global var.
  *             NOTE: In setup() make sure to do something like:
- *                   RPC.bind("setOneM7Var", setOneM7Var);
+ *                   RPC.bind("setOneVar_InM7ByM4", setOneM7Var);
  *
  * @return     Value set in M7.
  */
 int setOneM7Var(int var1_FromCM4)
 {
-    m7IntGlobalVar1 = (int)var1_FromCM4;// Set M7 variable to M4 sent in value.
+    // Set M7 variable to M4 sent in value.
+    m7IntGlobalVar1 = (int)var1_FromCM4;
     return m7IntGlobalVar1;             // Return value set in M7.                   
 }
 
 /**
  * @brief      Get some values M4 sent to M7.
  *             NOTE: In setup() make sure to do something like:
- *                   RPC.bind("setTwoVar", setTwoVar);
+ *                   RPC.bind("setTwoVar_InM7ByM4", setTwoVar_InM7);
  */
 void setTwoVar(int var1_FromCM4, int var2_FromCM4)
 {
@@ -142,15 +174,11 @@ void setTwoVar(int var1_FromCM4, int var2_FromCM4)
  */
 void setup()
 {
-  // When programming M7 core maximum is 1,048,576 bytes.
-  // When programming M4 core maximum is   786,432 bytes.
-
   // Start the remote procedure caller object.
   // This allows M7 full duplex communication with M4.
   RPC.begin();                        
 
   // Allow M7 to print to serial output.
- //Serial.begin(115200);                 
   Serial.begin(921600);                 
   
   // Initialize digital pin LED_BUILTIN as an output.
@@ -159,8 +187,8 @@ void setup()
   pinMode(LEDB, OUTPUT);
 
   // Start M4 core.
-  //bootM4();                             
-  
+  //bootM4();                           // This doesn't seem to be needed.
+                                        // How do we stop the M4 code from running? stopM4()? sleepM4()? pauseM4()?
   //
   // Create Boundens.
   //
@@ -183,11 +211,11 @@ void setup()
   // This causes the LED to flash Red--Green--Purple.
   //
   // Since each core puts the mechanis of flashing the LED on individual threads
-  // hopefully there will not be much skew of the colors.
+  // hopefully there will not be much skew of the colors, aka the timing will stay is color syncronicity.
   // This purple color is due to the M7 and M4 cores working together.
-  blinkRGB_Thread.start(BlinkRGB);
+  blinkRGB_Thread.start(BlinkRGB);      // Start thread to manage on-board LED.
 
-  //delay(5000);
+  //delay(5000);                        // Arduino IDE 2+ seems to need a delay() so we can see print() statements in setup().
   Serial.println("M7 is exiting setup()...");
 }
 
@@ -209,7 +237,7 @@ void loop()
     while (RPC.available() && micInferenceComplete)
     {
       // M4 has sent an RPC println().
-      buffer += (char)RPC.read(); // Fill the buffer with characters.
+      buffer += (char)RPC.read();       // Fill the buffer with characters.
     }
 
     if (buffer.length() > 0)
@@ -219,6 +247,7 @@ void loop()
       Serial.println("M7 global variable #1: "+ String(m7IntGlobalVar1));
       Serial.println("M7 global variable #2: "+ String(m7IntGlobalVar2));
 
+      // Start printing the M4 status update to the serial output.
       Serial.print(buffer);
     }
 }
