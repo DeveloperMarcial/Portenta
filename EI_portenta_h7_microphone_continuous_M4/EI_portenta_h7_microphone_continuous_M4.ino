@@ -26,6 +26,12 @@
  * and saved herin as the Software "EI_portenta_h7_microphone_continuous_M4.ino"    *
  * Copyright (c) 2022 M. Marcial                                                    *
  *                                                                                  *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy     *
+ * of this software and associated documentation files (the "Software"), to deal    *
+ * in the Software without restriction, including without limitation the rights     *
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell        *
+ * copies of the Software, and to permit persons to whom the Software is            *
+ * furnished to do so, subject to the following conditions:                         *
  * The above copyright notice shall be included in                                  *    
  * all copies or substantial portions of the Software.                              *
  *                                                                                  *
@@ -39,26 +45,32 @@
  ************************************************************************************
  */
 
-// Sketch uses  280,512 bytes (26%) of program storage space.
+/* Portenta H7 Memory Info ------------------------------------------------- */
+// When programming M7 core maximum is   786,432 bytes.
+
+// When programming M4 core maximum is 1,048,576 bytes.
+// Sketch uses  282,432 bytes (26%) of program storage space.
 // Maximum is 1,048,576 bytes.
 
 // If your target is limited in memory remove this macro to save 10K RAM.
 #define EIDSP_QUANTIZE_FILTERBANK   0
 
+/* INFO: Edge Impulse Audio Machine Learning Model Info -------------------- */
 /*
- * Define the number of slices per model window, e.g.
- * a model window of 1000 ms with slices per model window set to 4.
- * Results in a slice size of 250 ms.
+ * Define the number of slices per model window, e.g. a
+ *               model window = 1000 ms
+ *    slices per model window =    4
+ *             ==> slice size =  250 ms
  * For more info: https://docs.edgeimpulse.com/docs/continuous-audio-sampling
  *
- * On each slice now, inference is run multiple times (depending on the number of slices used for a model).
+ * On each "slice" now, inference is run multiple times (depending on the number of slices used for a model).
  * For example, a 1 second keyword model with 4 slices (each 250 ms), will inference each slice 4 times.
  * So if now the keyword is on 2 edges of the slice buffers,
  * they're glued back together in the FIFO buffer and the keyword will be classified correctly.
- * This is also known as grid registration error.
+ * This is also known as "grid registration error" or GRE.
  *
- * A moving average filter averages the classified output and so flattens the peaks.
- * See the moving average filter in ei_run_classifier.h
+ * A moving average filter averages the classified() output and so flattens the peaks.
+ * See the moving average filter in "ei_run_classifier.h".
  *
  * The EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW macro is used to set the number of slices to fill the complete model window.
  * The more slices per model, the smaller the slice size, thereby the more inference cycles on the sampled data.
@@ -67,9 +79,13 @@
  * So on targets with lower processing capabilities, we can increase this macro to meet the timing constraint.
  * Increasing the slice size, increases the volatile memory uses times 2 (since we use double buffering).
  * On a target with limited volatile memory this could be a problem. In this case you want the slice size to be small.
+ *
+ * Summary:
+ *                              [Slice Size] ∝ [RAM Size] x 2
  */
 //#define EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW 3
 
+/* INFO: TFLite Arena Allocation Issue ------------------------------------- */
 /*
  ** NOTE: If you run into TFLite arena allocation issue.
  **
@@ -104,7 +120,6 @@
                                                                    //    https://docs.arduino.cc/learn/built-in-libraries/pdm 
 
 #include <Crimson_Cherry_inferencing.h>                            // My Edge Impulse keyword inferencing library.
-
 //#include "C:\Users\mmarc\OneDrive\Documents\Arduino\libraries\Crimson_Cherry_inferencing\src\Crimson_Cherry_inferencing.h"
 
 using namespace rtos;                                              // Since the Portenta cores are based on the Mbed real-time OS,
@@ -114,7 +129,8 @@ using namespace rtos;                                              // Since the 
 
 Thread blinkR_Thread;                                              // Define a thread that will control the on-board LED.
 
-/** Audio Buffers, Pointers and Selectors */
+/* Audio Buffers, Pointers and Selectors
+   used by Edge Inpulse Audio Inferencer ----------------------------------- */
 typedef struct
 {
     signed short       *buffers[2];
@@ -155,13 +171,13 @@ void BlinkR()
 
     // M7 core is blinking blue right now.
     // By flashing the red the LED will look purple or violet, which is a secondary color.
-    // Slow purple.
+    // *** Slow Purple ***
     digitalWrite(LEDR, LOW);                                       // Turn the red LED on (LOW is the voltage level).
     delay(500);                                                    // Wait for 500 milliseconds.
     digitalWrite(LEDR, HIGH);                                      // Turn the LED off by setting the voltage HIGH.
     delay(500);                                                    // Wait for 500 milliseconds.
 
-    // // Fast purple.
+    // *** Fast Purple ***
     // digitalWrite(LEDR, LOW);                                    // Turn the red LED on (LOW is the voltage level).
     // delay(125);                                                 // Wait for 125 milliseconds.
     // digitalWrite(LEDR, HIGH);                                   // Turn the LED off by setting the voltage HIGH.
@@ -181,28 +197,27 @@ void BlinkR()
   }
 }
 
-// /**
-//  * @brief      Summary of Inferencing Settings (from model_metadata.h)
-//  *
-//  */
-// void show_summary_of_inferencing()
-// {
-//   // When this code was in setup() the code would not execute on the M4.
-//   // I suspect this is due to the RPC not being fully setup(?).
-//   // In setup() I tried, delay(1000), to let M7 get booted up but this did not help.
-//   // Un-rem this and in loop() there is code to call this once to see this info.
+/**
+ * @brief      Summary of Inferencing Settings (from model_metadata.h)
+ *
+ */
+void show_summary_of_inferencing()
+{
+  RPC.println("Inferencing settings:\n");                       
 
-//   RPC.println("Inferencing settings:\n");                       
+  RPC.println("\tInterval:          "                    + String(EI_CLASSIFIER_INTERVAL_MS) + " ms.");
 
-//   RPC.println("\tInterval:          " + String(EI_CLASSIFIER_INTERVAL_MS) + " ms.");
+  RPC.println("\tFrame size:        "                    + String(RPC.println(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)));
 
-//   RPC.println("\tFrame size:        " + String(RPC.println(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+  RPC.println("\tSample length:     "                    + String(EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16) + " ms.");
 
-//   RPC.println("\tSample length:     " + String(EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16) + " ms.");
+  RPC.println("\tEI_CLASSIFIER_SLICES_PER_MODEL_WINDOW=" + String(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW));
 
-//   RPC.println("\tNo. of classes:    " + String( ( sizeof(ei_classifier_inferencing_categories) /
-//                                                   sizeof(ei_classifier_inferencing_categories[0])));
-// }
+  RPC.println("\tEI_CLASSIFIER_SLICE_SIZE="              + String(EI_CLASSIFIER_SLICE_SIZE));
+
+  RPC.println("\tNo. of classes:    "                    + String( ( sizeof(ei_classifier_inferencing_categories) /
+                                                                     sizeof(ei_classifier_inferencing_categories[0]))));
+}
 
 bool detectedKeypharse = false; // Used to control when we print to serial output.
 bool pauseM4           = false; // Allow M7 to pause the M4 loop() so we can make the serial output less busy.
@@ -227,7 +242,6 @@ int setOneM4Var(int var1_FromM7)
     return m4IntGlobalVar1;                                        // Return what M7 value got stored in M4.
                                                                    // Hopefully, this is the same as what got sent in.
 }
-
 /**
  * @brief      Allow M7 to show M4 version
  *             M4 setup() has     "RPC.bind("getM4Version", printM4Version);"
@@ -243,11 +257,9 @@ void printM4Version(int varFromM4)
                              String("  IDE  ") +
                              String(ARDUINO);
   RPC.println(toM7);
-  //RPC.println(__FILE__ " " __DATE__ " " __TIME__);
-  //RPC.println("  IDE "); RPC.println(ARDUINO);
 }
 /**
- * @brief      Arduino setup function
+ * @brief      Arduino Setup Function
  */
 void setup()
 {
@@ -262,14 +274,13 @@ void setup()
     // Show M4 version.
     RPC.bind("getM4Version", printM4Version);
 
-    // Init Static Vars.
+    // Init Static Vars used by Edge Impulse Machine Learning Model.
     run_classifier_init();                    
 
     // Start the Audio Inferencer.
     if (microphone_inference_start(EI_CLASSIFIER_SLICE_SIZE) == false)
     {
-        // TODO: Rem this in, make the error happen and see if the M4 crashes.
-        //RPC.println("ERROR: Failed to setup audio sampling.");
+        RPC.println("ERROR: Failed to setup audio sampling.");
         return;
     }
     
@@ -289,11 +300,11 @@ void loop()
 {
     String toM7 = "";                                              // Temporary building string for messages going to M7.
 
-    // if(showSummaryOfInferencing)
-    // {
-    //   showSummaryOfInferencing = false;                         // Only show info once.
-    //   show_summary_of_inferencing();                            // TODO: Investigate why this crashes the M4 when placed in setup(). 
-    // }
+    if(showSummaryOfInferencing)
+    {
+      showSummaryOfInferencing = false;                            // Only show info once.
+      show_summary_of_inferencing();                               // TODO: Investigate why this crashes the M4 when placed in setup(). 
+    }
 
     while(pauseM4)
     {
@@ -302,7 +313,7 @@ void loop()
       delay(0xBAD);                                                // Wait about 3 seconds until we get an RPC call in.       
     }
     
-    bool m = microphone_inference_record();                        // Go wait until inference buffer is ready.
+    bool m = microphone_inference_record();                        // Go wait until audio inference buffer is ready.
     if (!m)
     {
         RPC.println("ERROR: Failed to record audio...");
@@ -310,7 +321,7 @@ void loop()
     }
     // ...Inference buffer is ready so classify it.
 
-    // Setup "signal": sets the callback function on the "signal_t" structure to reference the inference buffer:
+    // Setup "signal": sets the callback function on the "signal_t" structure to reference the audio inference buffer:
     signal_t signal_mic;
     signal_mic.total_length    = EI_CLASSIFIER_SLICE_SIZE;
     signal_mic.get_data        = &microphone_audio_signal_get_data;// This tells the "signal_mic" where to get the sampled data from.
@@ -335,7 +346,7 @@ void loop()
     {         
         bool res = RPC.call("setMicInferenceComplete", false).as<bool>();     // Force M7 to wait for all M4 Classifier() results to be
                                                                               // x-mitted before M7 leaves its RPC.available() while-loop.
-                                                                              // This makes for a pretty serial output.
+                                                                              // This makes for a appealing and engaging serial output.
         RPC.println("--- M4 --- --- M4 --- --- M4 --- --- M4 --- --- M4 ---");
         // Print the Predictions: P-the-P.
         String s1 = String(result.timing.dsp);
@@ -343,7 +354,7 @@ void loop()
         String s3 = String(result.timing.anomaly);
         s1.trim();
         s2.trim();                                                 // Was getting a bunch of extra spaces when converting
-        s3.trim();                                                 // "result.timing.classification" to a string. But trim() did not help.
+        s3.trim();                                                 // "result.timing.classification" to a string. But trim() is not helping.
         toM7 = String("Audio predictions from microphone:\n\t(DSP [ms]=\t") + s1 +               
                String("\tAnomaly [ms]=\t")                                  + s3 +
                String("\tClassification [ms]=\t")                           + s2;
@@ -352,12 +363,12 @@ void loop()
         //
         // Print Objects that Got Classified
         //
-        // (Mainly we want to examine label: "take_it_to_the_edge")
+        // (Mainly we want to examine inference label: "take_it_to_the_edge")
         detectedKeypharse = false;                            // Used to control when we print to serial output.
         for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
         {
             //
-            // Keep serial output neat like a table.
+            // Keep serial output pleasing like a table.
             //
             String alignmentTab = "";                              
             if("noise"==result.classification[ix].label)
@@ -373,18 +384,18 @@ void loop()
               alignmentTab =":\t";
             }
             toM7 = String(result.classification[ix].label) + alignmentTab + String(result.classification[ix].value);
-            RPC.println(toM7);
+            RPC.println(toM7);                                     // Print a row of the table.
             
             // Did we find the keyphrase?
             if ("take_it_to_the_edge" == result.classification[ix].label)
             {
-              // Is there high confidence this keyphrase is what we are looking for.
+              // Is there high confidence that this keyphrase is what we are looking for.
               ///toM7 = String("\t\t\tComparing ") + String(result.classification[ix].value) + alignmentTab + String(keywordConfidenceLevel);
-              ///RPC.println(toM7);
+              ///RPC.println(toM7);                               // Make sure we are comparing float values.
               if(result.classification[ix].value > keywordConfidenceLevel)
               {
                 ///toM7 = String("\t\t\tdetectedKeypharse=true");
-                ///RPC.println(toM7);
+                ///RPC.println(toM7);                              // Debug status update.
                 detectedKeypharse = true;                          // We will print after this for-loop so output remains consistent.
                                                                    // (Provides a future parser of the serial output less work.)
               }
@@ -407,7 +418,9 @@ void loop()
                  "\t\t\t!!! Recognized take_it_to_the_edge Keyphrase !!!";
           RPC.println(toM7);                                       // Have M7 print the successful results.
         }
+        
         RPC.println("--- End Audo Inference Running on M4 ---");
+
         res = RPC.call("setMicInferenceComplete", true).as<bool>();// All Classifier() status updates have been x-mitted to M7.
                                                                    // Allow M7 to leave its RPC.available() while-loop.
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
@@ -419,9 +432,13 @@ void loop()
 }
 
 /**
- * @brief      PDM buffer full callback.
+ * @brief      Pulse-Density Modulation (PDM) buffer full callback.
+ *                The callback is configured in microphone_inference_start() that is called during setup().
+ *                A callback is just a function that you tell some other function to call under some condition.
  *             Copy sampled audio data to inferecne app buffers.
  *             The audio sampling process calls this function when there is audio data.
+ *             The PDM library allows you to use Pulse-Density Modulation microphones.
+ *             See #include above for more comments.
  */
 static void pdm_data_ready_inference_callback(void)
 {
@@ -450,14 +467,19 @@ static void pdm_data_ready_inference_callback(void)
 }
 
 /**
- * @brief      Init inferencing struct and setup/start PDM
+ * @brief      Init inferencing struct and setup/start PDM.
+ *             Called from setup().
+ *             Initializes 2 inferencing buffers.
  *
- * @param[in]  n_samples  The n samples
+ * @param[in]  n_samples  The n samples <-- Nice descript!
+ *                        n_samples is the slice size being used by the Classifier().
+ *                        n_samples = EI_CLASSIFIER_SLICE_SIZE.
  *
  * @return     { description_of_the_return_value }
  */
 static bool microphone_inference_start(uint32_t n_samples)
 {
+    // Remember "inference" is declared as "static inference_t inference" and has 2 buffers[].
         inference.buffers[0] = (signed short *)malloc(n_samples * sizeof(signed short));
     if (inference.buffers[0] == NULL)
     {
@@ -488,15 +510,15 @@ static bool microphone_inference_start(uint32_t n_samples)
     PDM.onReceive(&pdm_data_ready_inference_callback);
 
     // Optionally set the gain, defaults to 24.
-    // Note: values >=52 not supported.
+    // Note: values >=52 not supported. <-- There is conflicting data on the web. TODO: Experiment with values.
     //PDM.setGain(40);
 
     // Set the buffer size (in bytes) used by the PDM interface.
     // Must be called before PDM.begin(), a default buffer size of 512 is used if not called.
-    // This is enough to hold 256 16-bit samples.
-    PDM.setBufferSize(2048);
+    // Buffer[512] is enough to hold 256 16-bit samples.
+    PDM.setBufferSize(2048);                                       // Buffer[2048] is enough to hold 1024 16-bit samples.
 
-    // Initialize PDM with: one channel (mono mode)
+    // Initialize PDM with: one channel (mono mode).
     if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY))
     {
         RPC.println("ERROR: Failed to start PDM!");
