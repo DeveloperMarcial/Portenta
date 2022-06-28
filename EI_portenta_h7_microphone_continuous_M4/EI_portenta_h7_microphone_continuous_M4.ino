@@ -49,7 +49,7 @@
 // When programming M7 core maximum is   786,432 bytes.
 
 // When programming M4 core maximum is 1,048,576 bytes.
-// Sketch uses  282,432 bytes (26%) of program storage space.
+// Sketch uses  282,592 bytes (26%) of program storage space.
 // Maximum is 1,048,576 bytes.
 
 // If your target is limited in memory remove this macro to save 10K RAM.
@@ -205,18 +205,24 @@ void show_summary_of_inferencing()
 {
   RPC.println("Inferencing settings:\n");                       
 
-  RPC.println("\tInterval:          "                    + String(EI_CLASSIFIER_INTERVAL_MS) + " ms.");
+  //             Interval:                              0.06 ms.
+  RPC.println("\tInterval:                              " + String(EI_CLASSIFIER_INTERVAL_MS) + " ms.");
 
-  RPC.println("\tFrame size:        "                    + String(RPC.println(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE)));
+  //             Frame size:                            16000 <-- Model Window Size.
+  RPC.println("\tFrame size:                            " + String(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE));
 
-  RPC.println("\tSample length:     "                    + String(EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16) + " ms.");
-
-  RPC.println("\tEI_CLASSIFIER_SLICES_PER_MODEL_WINDOW=" + String(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW));
-
-  RPC.println("\tEI_CLASSIFIER_SLICE_SIZE="              + String(EI_CLASSIFIER_SLICE_SIZE));
-
-  RPC.println("\tNo. of classes:    "                    + String( ( sizeof(ei_classifier_inferencing_categories) /
-                                                                     sizeof(ei_classifier_inferencing_categories[0]))));
+  //             Sample length:                         1000 ms. 
+  RPC.println("\tSample length:                         " + String(EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16) + " ms.");
+  
+  //             EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW: 4
+  RPC.println("\tEI_CLASSIFIER_SLICES_PER_MODEL_WINDOW: " + String(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW));
+  
+  //             EI_CLASSIFIER_SLICE_SIZE:              4000
+  RPC.println("\tEI_CLASSIFIER_SLICE_SIZE:              " + String(EI_CLASSIFIER_SLICE_SIZE));
+  
+  //             No. of classes:                        3
+  RPC.println("\tNo. of classes:                        " + String( ( sizeof(ei_classifier_inferencing_categories) /
+                                                                      sizeof(ei_classifier_inferencing_categories[0]))));
 }
 
 bool detectedKeypharse = false; // Used to control when we print to serial output.
@@ -227,6 +233,7 @@ int  m4IntGlobalVar1   = 4444;  // This is a global variable in M4 that the M7 c
  * @brief      When M7 does RPC with M4 it is bounded to land here.
  *             Allows M7 to set a M4 global variable.
  *             Toggles pausing the M4 loop().
+ *             setup() has "RPC.bind("setOneVarInM4", setOneM4Var);"
  */
 int setOneM4Var(int var1_FromM7)
 {
@@ -259,6 +266,16 @@ void printM4Version(int varFromM4)
   RPC.println(toM7);
 }
 /**
+ * @brief      Show audio inferencing configuration.
+ *             M4 setup() has     "RPC.bind("getSummaryOfInferencingOnM4", showSummaryOfInferencingOnM4);"
+ *             M7 has a statement "RPC.call("getSummaryOfInferencingOnM4", 0xACE);"
+ */
+void showSummaryOfInferencingOnM4(int varFromM4)
+{
+  show_summary_of_inferencing();
+}
+
+/**
  * @brief      Arduino Setup Function
  */
 void setup()
@@ -273,6 +290,9 @@ void setup()
                                                                    // Thus, bind() is a bounden between the name and function.    
     // Show M4 version.
     RPC.bind("getM4Version", printM4Version);
+
+    // Show Audio Inferencing Configuration.
+    RPC.bind("getSummaryOfInferencingOnM4", showSummaryOfInferencingOnM4);
 
     // Init Static Vars used by Edge Impulse Machine Learning Model.
     run_classifier_init();                    
