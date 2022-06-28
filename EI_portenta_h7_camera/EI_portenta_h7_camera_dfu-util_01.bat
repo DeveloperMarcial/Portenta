@@ -2,6 +2,10 @@
 
 Call EI_portenta_h7_camera_dfu-util-suffix_01.bat
 
+CALL:ECHOGRN "***"
+CALL:ECHOGRN "Flashing --- --- --- --- --- EI_portenta_h7_camera to M7..."
+CALL:ECHOGRN "***"
+
 REM C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\tools\dfu-util\0.10.0-arduino1>dfu-util
 REM dfu-util 0.10-dev
 REM 
@@ -59,6 +63,21 @@ REM C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\tools\dfu-util\0.10.
 
 ECHO Programming "EI_portenta_h7_camera" to M7 <------------------------
 "C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\tools\dfu-util\0.10.0-arduino1\dfu-util" --device 0x2341:0x035b -D "C:\Users\mmarc\AppData\Local\Temp\arduino-sketch-0F02D06D6ACA4A18DA886FED910D1A92\EI_portenta_h7_camera.ino.bin" --alt=0 --serial="0038002A3230510F31303431" --dfuse-address=0x08040000:leave --verbose
+REM ECHO errorlevel %errorlevel%
+if errorlevel==74 (
+   CALL:ECHOred "Programming Failed. Put Portenta in programming mode by double-clicking its RESET button."
+   GOTO flashErr
+)
+if errorlevel==0 (
+   CALL:ECHOGRN "***"
+   CALL:ECHOGRN "Flashing --- --- --- --- --- EI_portenta_h7_camera to M7...DONE!"
+   CALL:ECHOGRN "***"
+   CALL:ECHOgrn "Portenta Programed!"
+   GOTO myEnd
+)
+
+:flashErr
+GOTO myEnd
 
 REM The above command produced (this is the same as what the Arduino IDE produces.):
 REM Warning: Invalid DFU suffix signature
@@ -80,4 +99,14 @@ REM Download        [=========================] 100%       136944 bytes
 REM Download done.
 REM File downloaded successfully
 REM Transitioning to dfuMANIFEST state
-pause
+
+:ECHORED
+%Windir%\System32\WindowsPowerShell\v1.0\Powershell.exe write-host -foregroundcolor Red %1
+EXIT /B
+
+:ECHOGRN
+%Windir%\System32\WindowsPowerShell\v1.0\Powershell.exe write-host -foregroundcolor Green %1
+EXIT /B
+
+:myEnd
+PAUSE

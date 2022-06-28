@@ -1,4 +1,9 @@
 @ECHO OFF
+
+CALL:ECHOGRN "***"
+CALL:ECHOGRN "Setting DFU Suffix in --- --- --- --- --- EI_portenta_h7_camera..."
+CALL:ECHOGRN "***"
+
 REM ***
 REM This batch file is for project: EI_portenta_h7_camera
 REM ***
@@ -42,5 +47,31 @@ REM ***
 REM Add DFU Suffix
 REM ***
 "C:\Users\mmarc\AppData\Local\Arduino15\packages\arduino\tools\dfu-util\0.10.0-arduino1\dfu-suffix" --add "C:\Users\mmarc\AppData\Local\Temp\arduino-sketch-0F02D06D6ACA4A18DA886FED910D1A92\EI_portenta_h7_camera.ino.bin" --vid 0x2341 --pid 0x035b 
-ECHO ***
+if errorlevel==65 (
+   CALL:ECHOred "DFU Suffix Already Exists"
+   GOTO flashIt
+)
+if errorlevel==0 (
+   CALL:ECHOgrn "DFU Suffix Added"
+   GOTO flashIt
+)
+
+:flashIt
+
+CALL:ECHOGRN "***"
+CALL:ECHOGRN "Setting DFU Suffix in --- --- --- --- --- EI_portenta_h7_camera...DONE!"
+CALL:ECHOGRN "***"
+
+GOTO myEnd
+
+:ECHORED
+%Windir%\System32\WindowsPowerShell\v1.0\Powershell.exe write-host -foregroundcolor Red %1
+EXIT /B
+
+:ECHOGRN
+%Windir%\System32\WindowsPowerShell\v1.0\Powershell.exe write-host -foregroundcolor Green %1
+EXIT /B
+
+:myEnd
+
 PAUSE

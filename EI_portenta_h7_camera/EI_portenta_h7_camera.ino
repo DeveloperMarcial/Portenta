@@ -186,7 +186,7 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
     1.5MB   0.5MB
     2.0MB   8.0 SDRAM
 
-    Sketch uses 297,440 bytes (37%) of program storage space.
+    Sketch uses 297,664 bytes (37%) of program storage space.
     Maximum is  786,432 bytes.
 */
 
@@ -380,7 +380,14 @@ void handleSerial()
     Serial.print("incomingCharacter=");
     Serial.println(incomingCharacter);
     switch (incomingCharacter)
-    {
+    {      
+      case 'I':
+      case 'i':
+      {
+        // Show audio inferencing configuration in M4.
+        RPC.call("getSummaryOfInferencingOnM4", 0xACE);
+        break;
+      }
       case 'L':
       case 'l':
       {
@@ -397,6 +404,13 @@ void handleSerial()
         pauseCapture = !pauseCapture;
         Serial.print("pauseCapture=");
         Serial.println(pauseCapture);
+        break;
+      }
+      case 'Q':
+      case 'q':
+      {
+        // Toggle pause of M4.
+        int res = RPC.call("setOneVarInM4", 1).as<int>();
         break;
       }
       case 'U':
@@ -622,11 +636,18 @@ void loop()
         }
 
         // Print bounding box attributes.
+        // TODO: Collect all object "bb" data and print out after this for-loop.
+        //       All screws and washers are lie along their respective y-axis'.
+        //       Print the "bb" data in ascending x-axis values for a given y-axis.
+        //       This will allow easily evaluating what object is
+        //       being mis-identified or with a low prediction accuracy.
+        //       This appraising will help guide how additional image data is taken
+        //       as well as adjudging existing data in the Training dataset.
         ei_printf("    %s (\t", bb.label);  // Label: "washer", "screw"
         ei_printf_float(bb.value);          // Prediction "label" is 'label', aka, like 96% sure it's a washer.
         ei_printf(") [ x: %lu, y: %lu, width: %lu, height: %lu ]\n", bb.x, bb.y, bb.width, bb.height);
 
-        // TODO: Fix this. I found it hard to train a model with scres, washers and a relatively large yellow bin (2"x3").
+        // TODO: Fix this. I found it hard to train a model with screws, washers and a relatively large yellow bin (2"x3").
         // // Determine if a new packaging bin has come into the loading area.
         // if ( (strcmp(bb.label,"package_bin")==0) && (false==packageLoading) )
         // {
