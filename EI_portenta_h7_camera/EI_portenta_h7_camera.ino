@@ -48,7 +48,7 @@
 /* Includes ---------------------------------------------------------------- */
 #include "RPC.h"                                            // Comes with the mbed board installation. Used for M4-M7 communications.
 
-//version=1.0.10
+//version=1.0.18
 #include <FOMO_Washers_and_Screws_96x96_inferencing.h>      // Edge Impulse generated code to handle the Machine Learning in my Arduino code.
 
 #include "camera.h"                                         // Arduino library to handle color, resolution, framebuffer, framerate, etc.
