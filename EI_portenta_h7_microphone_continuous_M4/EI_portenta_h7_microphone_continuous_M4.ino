@@ -45,6 +45,10 @@
  ************************************************************************************
  */
 
+#ifndef CORE_CM4
+#error "This sketch should be compiled for Portenta (M4 core)"
+#endif
+
 /* Portenta H7 Memory Info ------------------------------------------------- */
 // When programming M7 core maximum is   786,432 bytes.
 
@@ -452,7 +456,10 @@ void loop()
 }
 
 /**
- * @brief      Pulse-Density Modulation (PDM) buffer full callback.
+ * @brief     Callback function to process the data from the PDM microphone.
+ *              NOTE: This callback is executed as part of an ISR.
+ *              Therefore using `Serial` to print messages inside this function isn't supported.
+ *             Pulse-Density Modulation (PDM) buffer full callback.
  *                The callback is configured in microphone_inference_start() that is called during setup().
  *                A callback is just a function that you tell some other function to call under some condition.
  *             Copy sampled audio data to inferecne app buffers.
@@ -468,6 +475,9 @@ static void pdm_data_ready_inference_callback(void)
 
     // Read into the Sample Buffer.
     int bytesRead = PDM.read((char *)&sampleBuffer[0], bytesAvailable);
+
+    // 16-bit, 2 bytes per sample
+    //int samplesRead = bytesAvailable / 2;
 
     if ((inference.buf_ready == 0) && (record_ready == true))
     {
@@ -529,7 +539,7 @@ static bool microphone_inference_start(uint32_t n_samples)
     // This sets the callback function that is called when new PDM data is ready to be read.
     PDM.onReceive(&pdm_data_ready_inference_callback);
 
-    // Optionally set the gain, defaults to 24.
+    // Optionally set the gain, Portenta defaults to 24.
     // Note: values >=52 not supported. <-- There is conflicting data on the web. TODO: Experiment with values.
     //PDM.setGain(40);
 
@@ -538,7 +548,10 @@ static bool microphone_inference_start(uint32_t n_samples)
     // Buffer[512] is enough to hold 256 16-bit samples.
     PDM.setBufferSize(2048);                                       // Buffer[2048] is enough to hold 1024 16-bit samples.
 
-    // Initialize PDM with: one channel (mono mode).
+    // Initialize PDM with:
+    // - one channel (mono mode)
+    // - a 16 kHz sample rate for the Arduino Nano 33 BLE Sense
+    // - a 32 kHz or 64 kHz sample rate for the Arduino Portenta Vision Shield
     if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY))
     {
         RPC.println("ERROR: Failed to start PDM!");
