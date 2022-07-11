@@ -120,6 +120,9 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
 /* INFO: Portenta SDRAM ---------------------------------------------------- */
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
 /*
+    The board comes with an hefty 8MB of external fast RAM, which can be used:
+    - as a framebuffer (raw mode)
+    - as an expansion of on-chip RAM to store "standard" data
     Portenta has an external 8MB RAM module (albeit slower), you could have a huge heap by just using Portenta_SDRAM
     library and replacing the calls to malloc and free with ea_malloc and ea_free.
     Can also do this:
@@ -172,6 +175,22 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
       up to 240 MHz with FPU, Adaptive
       real-time accelerator (ART AcceleratorTM)
 
+    Arduino Loader:
+      Magic Number (validation):  a0
+      Bootloader version:         22
+      Clock source:               External oscillator
+      USB Speed:                  USB 2.0/Hi-Speed (480 Mbps)
+      Has Ethernet:               Yes
+      Has WiFi module:            Yes
+      SDRAM size:                  8 MB
+      Flash QSPI size:            16 MB
+      Has Video output:           Yes
+      Has Crypto chip:            Yes
+
+    Use "STM32H747_manageBootloader.ino" to
+      load or update the "Arduino bootloader"
+      load           the "MCUboot bootloader"
+
      2 Mbytes of Flash Memory with read-while-write support
      1 Mbytes of RAM
      8 Mbytes SDRAM
@@ -186,7 +205,18 @@ int  calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32
     1.5MB   0.5MB
     2.0MB   8.0 SDRAM
 
-    Sketch uses 297,664 bytes (37%) of program storage space.
+    QSPI can be be exposed as a USB Mass Storage
+      "AccessFlashAsUsbDisk.ino" shows how to expose a QSPIF BlockDevice (16MB external flash on the Portenta H7)
+      as an USB stick. It can be adapted to any kind of BlockDevice (FlashIAP or either RAM via HeapBlockDevice)
+      Before loading this example, make sure you execute WiFiFirmwareUpdater.ino
+      to create and format the proper partitions.
+      Running "AccessFlashAsUsbDisk.ino" makes a PC see the Portenta as a USB Mass Storage.
+      You can drag-n-drop files to/from the Portenta 16 MB QSPI.
+      You will probably see:
+        4343WA1.BIN 412 KB
+        CaCert.PEM   62 KB
+
+    This Sketch uses 297,664 bytes (37%) of program storage space.
     Maximum is  786,432 bytes.
 */
 
@@ -474,7 +504,7 @@ void setup()
     /* Setup Camera -------------------------------------------------------- */
 #ifdef EI_CAMERA_FRAME_BUFFER_SDRAM
     // initialise the SDRAM
-    SDRAM.begin(SDRAM_START_ADDRESS);
+    SDRAM.begin(SDRAM_START_ADDRESS);   // Same as SDRAM.begin(); 
 #endif
 
     if (ei_camera_init() == false)
